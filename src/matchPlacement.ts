@@ -56,18 +56,13 @@ const REASON_ORDER: readonly string[] = [
 const wants = (conditions: Condition[], c: Condition): boolean => conditions.includes(c)
 
 /**
- * Первая сработавшая причина жёсткого фильтра для места (в порядке SPEC),
- * либо null, если место проходит все фильтры.
+ * Первая сработавшая причина среди фильтров, завязанных на specialConditions
+ * (в порядке SPEC) — без capacity и deadline, они проверяются отдельно
+ * вызывающей стороной.
  */
-export function hardFilterReason(
-  request: GhostRequest,
-  place: Place,
-  currentDay: number,
-): string | null {
+function conditionConflictReason(request: GhostRequest, place: Place): string | null {
   const cond = request.specialConditions
 
-  if (place.capacity <= place.currentOccupants) return BLOCK_REASONS.noCapacity
-  if (request.deadline < currentDay) return BLOCK_REASONS.deadlinePassed
   if (wants(cond, 'needs_attic') && !place.restrictions.includes('attic_available'))
     return BLOCK_REASONS.noAttic
   if (wants(cond, 'fears_mirrors') && !place.restrictions.includes('no_mirrors'))
@@ -78,6 +73,34 @@ export function hardFilterReason(
   if (wants(cond, 'needs_darkness') && place.lighting > 2) return BLOCK_REASONS.notDarkEnough
   if (wants(cond, 'fears_crowds') && place.capacity > 3) return BLOCK_REASONS.tooCrowded
   return null
+}
+
+/**
+ * Первая сработавшая причина жёсткого фильтра для места (в порядке SPEC),
+ * либо null, если место проходит все фильтры. Формула подбора целиком —
+ * включает и capacity, и deadline.
+ */
+export function hardFilterReason(
+  request: GhostRequest,
+  place: Place,
+  currentDay: number,
+): string | null {
+  if (place.capacity <= place.currentOccupants) return BLOCK_REASONS.noCapacity
+  if (request.deadline < currentDay) return BLOCK_REASONS.deadlinePassed
+  return conditionConflictReason(request, place)
+}
+
+/**
+ * То же самое, но только про атрибуты самого места (чердак, зеркала, люди,
+ * шум, свет, влажность, вместимость) — без deadline. Дедлайн не является
+ * свойством места, поэтому его просрочка не должна читаться как «место не
+ * подходит»: используется там, где нужно объяснить конфликт уже размещённой
+ * заявки с её текущим местом, а не прогнать заявку через жёсткие фильтры
+ * подбора целиком.
+ */
+export function roomConflictReason(request: GhostRequest, place: Place): string | null {
+  if (place.capacity <= place.currentOccupants) return BLOCK_REASONS.noCapacity
+  return conditionConflictReason(request, place)
 }
 
 // ── Мягкий скоринг (сумма = 100) ────────────────────────────────────────────

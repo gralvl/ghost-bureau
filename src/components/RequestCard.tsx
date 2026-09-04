@@ -3,6 +3,7 @@ import type { GhostRequest, Place, RequestStatus } from '../types'
 import { conditionLabel, requestStatusLabel, temperatureLabel } from '../labels'
 import { hardFilterReason, matchPlacement } from '../matchPlacement'
 import { resolveOccupancy } from '../occupancy'
+import { resolveRequestStatus } from '../resolveStatus'
 import { Badge, type Tone } from './ui'
 
 // Экран 3 из SPEC: карточка заявки.
@@ -56,9 +57,10 @@ export function RequestCard({
   const conflict = pickedPlace ? hardFilterReason(request, pickedPlace, currentDay) : null
 
   const assignedPlace = resolvedPlaces.find((p) => p.id === request.assignedPlaceId) ?? null
-  const assignedConflict = assignedPlace
-    ? hardFilterReason(request, assignedPlace, currentDay)
-    : null
+  // Актуальные статус/причина — через общую точку правды (та же, что и в
+  // списках/отчёте), а не request.status напрямую.
+  const resolved = resolveRequestStatus(request, places, requests, currentDay)
+  const assignedConflict = resolved.status === 'placed' ? resolved.reason : null
 
   return (
     <div
@@ -75,7 +77,7 @@ export function RequestCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-slate-100">{request.name}</h3>
-            <Badge tone={statusTone[request.status]}>{requestStatusLabel[request.status]}</Badge>
+            <Badge tone={statusTone[resolved.status]}>{requestStatusLabel[resolved.status]}</Badge>
           </div>
           <button
             type="button"

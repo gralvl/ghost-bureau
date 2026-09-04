@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react'
-import type { GhostRequest, Place } from '../types'
+import type { GhostRequest, Place, RequestStatus } from '../types'
 import { conditionLabel, requestStatusLabel } from '../labels'
-import { hardFilterReason, matchPlacement } from '../matchPlacement'
-import { placeLoad, resolveOccupancy } from '../occupancy'
+import { placeLoad } from '../occupancy'
+import { resolveRequestStatus } from '../resolveStatus'
 import { Badge } from './ui'
 
 // Экран 4 из SPEC: итоговый отчёт —
 // расселено / без места / проблемные заявки / перегруженные места.
+// Статус/причина каждой заявки берутся из resolveRequestStatus — той же
+// точки правды, что и в списках/карточке.
 
 interface Problem {
   request: GhostRequest
@@ -54,21 +56,14 @@ export function Report({
   const placeById = (id: string | undefined): Place | null =>
     places.find((p) => p.id === id) ?? null
 
-  const placed = requests.filter((r) => r.status === 'placed')
-  const unplaceable = requests.filter((r) => r.status === 'unplaceable')
+  const resolved = new Map(
+    requests.map((r) => [r.id, resolveRequestStatus(r, places, requests, currentDay)] as const),
+  )
+  const statusOf = (r: GhostRequest): RequestStatus => resolved.get(r.id)?.status ?? r.status
+  const reasonOf = (r: GhostRequest): string | null => resolved.get(r.id)?.reason ?? null
 
-  const reasonFor = (r: GhostRequest): string | null => {
-    const resolved = resolveOccupancy(places, requests, { excludeRequestId: r.id })
-    const m = matchPlacement(r, resolved, currentDay)
-    return 'reason' in m ? m.reason : null
-  }
-
-  const conflictFor = (r: GhostRequest): string | null => {
-    const place = placeById(r.assignedPlaceId)
-    if (!place) return null
-    const [resolved] = resolveOccupancy([place], requests, { excludeRequestId: r.id })
-    return hardFilterReason(r, resolved, currentDay)
-  }
+  const placed = requests.filter((r) => statusOf(r) === 'placed')
+  const unplaceable = requests.filter((r) => statusOf(r) === 'unplaceable')
 
   // Проблемные заявки: одна строка на заявку, теги проблем накапливаются.
   // Плановое ожидание (pending с запасом по времени) проблемой не считаем.
@@ -80,10 +75,10 @@ export function Report({
   }
   for (const r of requests) {
     if (r.deadline < currentDay) flag(r, 'дедлайн просрочен')
-    else if (r.status === 'pending' && r.deadline - currentDay <= 1) flag(r, 'дедлайн на носу')
+    else if (statusOf(r) === 'pending' && r.deadline - currentDay <= 1) flag(r, 'дедлайн на носу')
   }
   for (const r of placed) {
-    const c = conflictFor(r)
+    const c = reasonOf(r)
     if (c) flag(r, `размещено с конфликтом: ${c}`)
   }
   const problemList = [...problems.values()]
@@ -122,7 +117,7 @@ export function Report({
       <Group title="Расселено" count={placed.length}>
         <ul className="space-y-1 text-sm">
           {placed.map((r) => {
-            const conflict = conflictFor(r)
+            const conflict = reasonOf(r)
             return (
               <li key={r.id} className="flex flex-wrap items-center gap-2 text-slate-300">
                 <span className="text-slate-100">{r.name}</span>
@@ -141,7 +136,7 @@ export function Report({
           {unplaceable.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-2">
               <span className="text-slate-100">{r.name}</span>
-              <span className="text-red-300">{reasonFor(r) ?? 'причина не установлена'}</span>
+              <span className="text-red-300">{reasonOf(r) ?? 'причина не установлена'}</span>
               {r.specialConditions.map((c) => (
                 <Badge key={c} tone="violet">
                   {conditionLabel[c]}
@@ -157,7 +152,7 @@ export function Report({
           {problemList.map(({ request, tags }) => (
             <li key={request.id} className="flex flex-wrap items-center gap-2">
               <span className="text-slate-100">{request.name}</span>
-              <span className="text-xs text-slate-500">{requestStatusLabel[request.status]}</span>
+              <span className="text-xs text-slate-500">{requestStatusLabel[statusOf(request)]}</span>
               {tags.map((t) => (
                 <Badge key={t} tone="amber">
                   {t}

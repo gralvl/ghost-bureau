@@ -46,4 +46,46 @@ describe('validateAppData', () => {
     expect(res.ok).toBe(false)
     if (!res.ok) expect(res.errors.join('\n')).toContain('assignedPlaceId')
   })
+
+  it('дробный currentDay отклоняется', () => {
+    const res = validateAppData({ currentDay: 1.5, places: [], requests: [] })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.errors.join('\n')).toContain('currentDay')
+  })
+
+  it('assignedPlaceId у заявки со статусом не placed отклоняется', () => {
+    const res = validateAppData({
+      currentDay: 1,
+      places: [
+        {
+          id: 'p1',
+          name: 'Место',
+          propertyType: 'castle',
+          price: 0,
+          architecturalStyle: 'gothic',
+          capacity: 3,
+          currentOccupants: 0,
+          lighting: 1,
+          humidity: 1,
+          noiseLevel: 1,
+          hasHumans: false,
+          restrictions: [],
+        },
+      ],
+      requests: [
+        {
+          id: 'r1',
+          name: 'Тест',
+          anxietyLevel: 3,
+          favoriteTemperature: 'cold',
+          deadline: 2,
+          specialConditions: [],
+          status: 'pending',
+          assignedPlaceId: 'p1',
+        },
+      ],
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.errors.join('\n')).toContain('допустимо только при placed')
+  })
 })

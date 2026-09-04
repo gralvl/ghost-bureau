@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { scenarios, type ScenarioKey } from './data'
 import { validateAppData } from './validateData'
-import type { AppState, GhostRequest } from './types'
-import { matchPlacement } from './matchPlacement'
-import { resolveOccupancy } from './occupancy'
+import type { AppState } from './types'
+import { recomputeStatuses } from './resolveStatus'
 import { Header } from './components/Header'
 import { PlaceList } from './components/PlaceList'
 import { RequestList } from './components/RequestList'
@@ -73,43 +72,35 @@ export default function App() {
 
   const { currentDay, requests, places } = state
 
-  const nextDay = () => setState((s) => (s ? { ...s, currentDay: s.currentDay + 1 } : s))
+  // Смена дня и любое ручное assign/clear пересчитывают status ВСЕХ заявок
+  // (recomputeStatuses), а не только затронутой — решение по одной заявке
+  // (просроченный дедлайн, освобождённое место) может изменить актуальный
+  // статус других.
 
-  const withPlacement = (r: GhostRequest, placeId: string): GhostRequest => ({
-    ...r,
-    assignedPlaceId: placeId,
-    status: 'placed',
-  })
-
-  const withoutPlacement = (r: GhostRequest): GhostRequest => ({
-    ...r,
-    assignedPlaceId: undefined,
-    status: 'pending',
-  })
+  const nextDay = () =>
+    setState((s) => {
+      if (!s) return s
+      const currentDay = s.currentDay + 1
+      return { ...s, currentDay, requests: recomputeStatuses(s.requests, s.places, currentDay) }
+    })
 
   const assignPlace = (requestId: string, placeId: string) => {
-    setState((s) =>
-      s
-        ? { ...s, requests: s.requests.map((r) => (r.id === requestId ? withPlacement(r, placeId) : r)) }
-        : s,
-    )
+    setState((s) => {
+      if (!s) return s
+      const assigned = s.requests.map((r) =>
+        r.id === requestId ? { ...r, assignedPlaceId: placeId } : r,
+      )
+      return { ...s, requests: recomputeStatuses(assigned, s.places, s.currentDay) }
+    })
   }
 
   const clearAssignment = (requestId: string) => {
     setState((s) => {
       if (!s) return s
-      const cleared = s.requests.map((r) => (r.id === requestId ? withoutPlacement(r) : r))
-      const resolved = resolveOccupancy(s.places, cleared, { excludeRequestId: requestId })
-      return {
-        ...s,
-        requests: cleared.map((r) => {
-          if (r.id !== requestId) return r
-          const result = matchPlacement(r, resolved, s.currentDay)
-          const status: GhostRequest['status'] =
-            'unplaceable' in result ? 'unplaceable' : 'pending'
-          return { ...r, status }
-        }),
-      }
+      const cleared = s.requests.map((r) =>
+        r.id === requestId ? { ...r, assignedPlaceId: undefined } : r,
+      )
+      return { ...s, requests: recomputeStatuses(cleared, s.places, s.currentDay) }
     })
   }
 

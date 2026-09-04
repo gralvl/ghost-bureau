@@ -34,8 +34,10 @@ export function validateAppData(raw: unknown): ValidationResult {
     return { ok: false, errors: ['Корень данных не является объектом'] }
   }
 
-  if (!Number.isFinite(raw.currentDay) || (raw.currentDay as number) < 1) {
-    errors.push(`currentDay должен быть числом ≥ 1 (получено: ${JSON.stringify(raw.currentDay)})`)
+  if (!Number.isInteger(raw.currentDay) || (raw.currentDay as number) < 1) {
+    errors.push(
+      `currentDay должен быть целым числом ≥ 1 (получено: ${JSON.stringify(raw.currentDay)})`,
+    )
   }
 
   const placeIds = new Set<string>()
@@ -104,10 +106,18 @@ export function validateAppData(raw: unknown): ValidationResult {
       if (!STATUSES.has(r.status as string))
         errors.push(`${at}: неизвестный status «${String(r.status)}»`)
       if (r.assignedPlaceId !== undefined) {
-        if (typeof r.assignedPlaceId !== 'string')
+        if (typeof r.assignedPlaceId !== 'string') {
           errors.push(`${at}: assignedPlaceId не строка`)
-        else if (places && Array.isArray(places) && !placeIds.has(r.assignedPlaceId))
-          errors.push(`${at}: assignedPlaceId «${r.assignedPlaceId}» не ссылается на существующее место`)
+        } else {
+          if (Array.isArray(places) && !placeIds.has(r.assignedPlaceId))
+            errors.push(
+              `${at}: assignedPlaceId «${r.assignedPlaceId}» не ссылается на существующее место`,
+            )
+          if (r.status !== 'placed')
+            errors.push(
+              `${at}: assignedPlaceId задан при статусе «${String(r.status)}» — допустимо только при placed`,
+            )
+        }
       }
       if (r.status === 'placed' && r.assignedPlaceId === undefined)
         errors.push(`${at}: статус placed без assignedPlaceId`)
