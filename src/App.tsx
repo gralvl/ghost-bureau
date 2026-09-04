@@ -9,9 +9,10 @@ import { PlaceList } from './components/PlaceList'
 import { RequestList } from './components/RequestList'
 import { RequestCard } from './components/RequestCard'
 import { Report } from './components/Report'
+import { Worklog } from './components/Worklog'
 import { Section } from './components/ui'
 
-type Tab = 'overview' | 'report'
+type Tab = 'overview' | 'report' | 'worklog'
 
 export default function App() {
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>('normal')
@@ -124,6 +125,7 @@ export default function App() {
           [
             ['overview', 'Обзор'],
             ['report', 'Итоговый отчёт'],
+            ['worklog', 'AI Worklog'],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -142,7 +144,7 @@ export default function App() {
       </nav>
 
       <main className="mx-auto max-w-4xl px-6 py-8">
-        {tab === 'overview' ? (
+        {tab === 'overview' && (
           <div className="space-y-8">
             <Section title="Заявки" count={requests.length}>
               <RequestList
@@ -156,9 +158,11 @@ export default function App() {
               <PlaceList places={places} requests={requests} />
             </Section>
           </div>
-        ) : (
+        )}
+        {tab === 'report' && (
           <Report requests={requests} places={places} currentDay={currentDay} />
         )}
+        {tab === 'worklog' && <Worklog />}
       </main>
 
       {selected && (
