@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { GhostRequest, Place, RequestStatus } from '../types'
 import { conditionLabel, requestStatusLabel, temperatureLabel } from '../labels'
 import { hardFilterReason, matchPlacement } from '../matchPlacement'
+import { resolveOccupancy } from '../occupancy'
 import { Badge, type Tone } from './ui'
 
 // Экран 3 из SPEC: карточка заявки.
@@ -18,6 +19,7 @@ const statusTone: Record<RequestStatus, Tone> = {
 export function RequestCard({
   request,
   places,
+  requests,
   currentDay,
   onAssign,
   onClear,
@@ -25,12 +27,17 @@ export function RequestCard({
 }: {
   request: GhostRequest
   places: Place[]
+  requests: GhostRequest[]
   currentDay: number
   onAssign: (placeId: string) => void
   onClear: () => void
   onClose: () => void
 }) {
-  const match = matchPlacement(request, places, currentDay)
+  // Занятость мест с учётом ручных назначений, но без самой этой заявки —
+  // решаем, куда её поставить, поэтому её слот не учитываем.
+  const resolvedPlaces = resolveOccupancy(places, requests, { excludeRequestId: request.id })
+
+  const match = matchPlacement(request, resolvedPlaces, currentDay)
   const suggestedId = 'placeId' in match ? match.placeId : null
 
   const [picked, setPicked] = useState<string>(request.assignedPlaceId ?? suggestedId ?? '')
@@ -45,10 +52,10 @@ export function RequestCard({
 
   // Пересчитывается на каждый рендер → предупреждение обновляется вживую
   // при смене значения в списке.
-  const pickedPlace = places.find((p) => p.id === picked) ?? null
+  const pickedPlace = resolvedPlaces.find((p) => p.id === picked) ?? null
   const conflict = pickedPlace ? hardFilterReason(request, pickedPlace, currentDay) : null
 
-  const assignedPlace = places.find((p) => p.id === request.assignedPlaceId) ?? null
+  const assignedPlace = resolvedPlaces.find((p) => p.id === request.assignedPlaceId) ?? null
   const assignedConflict = assignedPlace
     ? hardFilterReason(request, assignedPlace, currentDay)
     : null
@@ -106,7 +113,7 @@ export function RequestCard({
             <div className="mt-2 space-y-2">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-medium text-slate-100">
-                  {places.find((p) => p.id === match.placeId)?.name}
+                  {resolvedPlaces.find((p) => p.id === match.placeId)?.name}
                 </span>
                 <span className="tabular-nums text-sm text-slate-400">score {match.score}</span>
               </div>
@@ -143,7 +150,7 @@ export function RequestCard({
             className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
           >
             <option value="">— не выбрано —</option>
-            {places.map((p) => (
+            {resolvedPlaces.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} — занято {p.currentOccupants}/{p.capacity}
               </option>

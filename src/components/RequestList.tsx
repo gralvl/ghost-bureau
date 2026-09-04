@@ -1,11 +1,12 @@
 import type { GhostRequest, Place, RequestStatus } from '../types'
 import { conditionLabel, requestStatusLabel, temperatureLabel } from '../labels'
-import { hardFilterReason } from '../matchPlacement'
+import { hardFilterReason, matchPlacement } from '../matchPlacement'
+import { resolveOccupancy } from '../occupancy'
 import { Badge, EmptyState, type Tone } from './ui'
 
 // Экран 1 из SPEC: список заявок. Статус — цветом, условия — бейджами,
-// кнопка «детали». Бизнес-логика подбора не вызывается; hardFilterReason
-// используется лишь чтобы пометить уже размещённую заявку с конфликтом.
+// кнопка «детали». Причина отказа у unplaceable-заявок и конфликт у
+// placed-заявок показываются прямо в списке, а не только в карточке.
 
 const statusTone: Record<RequestStatus, Tone> = {
   pending: 'blue',
@@ -32,10 +33,22 @@ export function RequestList({
     <ul className="space-y-2">
       {requests.map((r) => {
         const assignedPlace = places.find((p) => p.id === r.assignedPlaceId) ?? null
+
         const conflict =
           r.status === 'placed' && assignedPlace
-            ? hardFilterReason(r, assignedPlace, currentDay)
+            ? hardFilterReason(
+                r,
+                resolveOccupancy([assignedPlace], requests, { excludeRequestId: r.id })[0],
+                currentDay,
+              )
             : null
+
+        let unplaceableReason: string | null = null
+        if (r.status === 'unplaceable') {
+          const resolved = resolveOccupancy(places, requests, { excludeRequestId: r.id })
+          const result = matchPlacement(r, resolved, currentDay)
+          unplaceableReason = 'reason' in result ? result.reason : null
+        }
 
         return (
           <li key={r.id} className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
@@ -45,6 +58,7 @@ export function RequestList({
                   <span className="font-medium text-slate-100">{r.name}</span>
                   <Badge tone={statusTone[r.status]}>{requestStatusLabel[r.status]}</Badge>
                   {conflict && <Badge tone="amber">⚠ {conflict}</Badge>}
+                  {unplaceableReason && <Badge tone="red">причина: {unplaceableReason}</Badge>}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">

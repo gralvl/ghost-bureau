@@ -1,4 +1,4 @@
-import type { Place } from '../types'
+import type { GhostRequest, Place } from '../types'
 import {
   architecturalStyleLabel,
   humidityScale,
@@ -8,20 +8,27 @@ import {
   restrictionLabel,
   scaleWord,
 } from '../labels'
+import { placeLoad, type PlaceLoad } from '../occupancy'
 import { Badge, EmptyState, Meter, type Tone } from './ui'
 
-// Экран 2 из SPEC: список мест. Вместимость (занято/всего), параметры, статус.
-// Статус выводится из заполненности — отдельного поля в модели нет.
+// Экран 2 из SPEC: список мест. Вместимость (занято/всего) считается с учётом
+// текущих ручных назначений (assignedPlaceId), а не только моковых
+// currentOccupants. Статус выводится из заполненности.
 
-function occupancyStatus(place: Place): { label: string; tone: Tone } {
-  const free = place.capacity - place.currentOccupants
-  if (free < 0) return { label: 'переполнено', tone: 'red' }
-  if (free === 0) return { label: 'мест нет', tone: 'red' }
-  if (free === 1) return { label: 'почти заполнено', tone: 'amber' }
+function occupancyStatus(load: PlaceLoad): { label: string; tone: Tone } {
+  if (load.overCapacity) return { label: 'переполнено', tone: 'red' }
+  if (load.free === 0) return { label: 'мест нет', tone: 'red' }
+  if (load.free === 1) return { label: 'почти заполнено', tone: 'amber' }
   return { label: 'есть места', tone: 'green' }
 }
 
-export function PlaceList({ places }: { places: Place[] }) {
+export function PlaceList({
+  places,
+  requests,
+}: {
+  places: Place[]
+  requests: GhostRequest[]
+}) {
   if (places.length === 0) {
     return <EmptyState>Мест нет</EmptyState>
   }
@@ -29,9 +36,9 @@ export function PlaceList({ places }: { places: Place[] }) {
   return (
     <ul className="grid gap-2 sm:grid-cols-2">
       {places.map((p) => {
-        const status = occupancyStatus(p)
-        const overfilled = p.currentOccupants > p.capacity
-        const fillPercent = Math.min(100, (p.currentOccupants / p.capacity) * 100)
+        const load = placeLoad(p, requests)
+        const status = occupancyStatus(load)
+        const fillPercent = p.capacity > 0 ? Math.min(100, (load.total / p.capacity) * 100) : 100
 
         return (
           <li
@@ -53,15 +60,20 @@ export function PlaceList({ places }: { places: Place[] }) {
               <div className="flex items-baseline justify-between text-xs text-slate-400">
                 <span>занято</span>
                 <span className="tabular-nums text-slate-300">
-                  {p.currentOccupants} / {p.capacity}
+                  {load.total} / {p.capacity}
                 </span>
               </div>
               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-800">
                 <div
-                  className={`h-full rounded-full ${overfilled ? 'bg-red-500' : 'bg-slate-400'}`}
+                  className={`h-full rounded-full ${load.overCapacity ? 'bg-red-500' : 'bg-slate-400'}`}
                   style={{ width: `${fillPercent}%` }}
                 />
               </div>
+              {load.placed > 0 && (
+                <div className="mt-1 text-[11px] text-slate-500">
+                  {load.base} из моков + {load.placed} по заявкам
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-3">
